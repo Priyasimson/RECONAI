@@ -12,7 +12,7 @@ import { runBaselineLoadTest } from './engine/load-runner.js';
 import { generateLoadTestExcelReport } from './reporter/excel-load-reporter.js';
 import path from 'path';
 
-const OUTPUT_EXCEL_PATH = path.resolve('./ReconAI_Baseline_Load_Test_Report.xlsx');
+const OUTPUT_EXCEL_PATH = path.resolve('./ReconAI_Load_Concurrency_Test_Report_300_TestCases.xlsx');
 
 async function main() {
   console.log('================================================================');

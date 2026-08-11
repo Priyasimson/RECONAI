@@ -1,0 +1,23 @@
+{
+  "name": "security-tests",
+  "version": "1.0.0",
+  "description": "Security SAST Audit & Vulnerability Testing Suite with 300+ Test Cases Excel Report",
+  "main": "run-security-tests.js",
+  "type": "module",
+  "scripts": {
+    "test": "node run-security-tests.js",
+    "generate-report": "node run-security-tests.js"
+  },
+  "keywords": [
+    "security-testing",
+    "sast",
+    "owasp",
+    "reconai",
+    "excel-report"
+  ],
+  "author": "ReconAI Security Team",
+  "license": "MIT",
+  "dependencies": {
+    "exceljs": "^4.4.0"
+  }
+}

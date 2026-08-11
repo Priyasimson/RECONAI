@@ -16,7 +16,7 @@ import fs from 'fs';
 import path from 'path';
 
 const APP_URL = process.env.APP_URL || 'http://localhost:5173/login';
-const OUTPUT_EXCEL_PATH = path.resolve('./selenium-tests/ReconAI_E2E_Test_Report_400_TestCases.xlsx');
+const OUTPUT_EXCEL_PATH = path.resolve('./ReconAI_Selenium_E2E_Test_Report_300_TestCases.xlsx');
 
 /**
  * Generates 405 detailed, unique, real-world test cases covering all aspects of web app testing.
