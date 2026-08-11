@@ -1,0 +1,25 @@
+{
+  "name": "load-tests",
+  "version": "1.0.0",
+  "description": "Baseline & Load Testing Suite for ReconAI Surgical Platform API",
+  "main": "run-baseline-test.js",
+  "type": "module",
+  "scripts": {
+    "test": "node run-baseline-test.js",
+    "load-test": "node run-baseline-test.js",
+    "generate-report": "node run-baseline-test.js --report-only"
+  },
+  "keywords": [
+    "load-testing",
+    "baseline-testing",
+    "reconai",
+    "concurrency",
+    "rps",
+    "performance"
+  ],
+  "author": "ReconAI Performance Engineering Team",
+  "license": "MIT",
+  "dependencies": {
+    "exceljs": "^4.4.0"
+  }
+}

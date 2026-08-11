@@ -1,0 +1,25 @@
+{
+  "name": "appium-tests",
+  "version": "1.0.0",
+  "description": "Appium E2E Mobile & Frontend Automation Suite with Excel Report Generator for ReconAI",
+  "main": "generate-report.js",
+  "type": "module",
+  "scripts": {
+    "test": "node generate-report.js",
+    "generate-report": "node generate-report.js",
+    "test:appium": "node tests/e2e-appium.test.js"
+  },
+  "keywords": [
+    "appium",
+    "webdriverio",
+    "reconai",
+    "e2e-testing",
+    "excel-report"
+  ],
+  "author": "ReconAI QA Team",
+  "license": "MIT",
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "webdriverio": "^8.38.0"
+  }
+}

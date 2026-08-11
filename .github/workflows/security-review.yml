@@ -1,0 +1,68 @@
+name: Defensive Security Code Review (SAST)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  static-security-scan:
+    name: SAST Code & Dependency Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Detect Backend Environment
+        run: |
+          echo "=== Detecting Backend Tech Stack ==="
+          if [ -f "server/package.json" ] || [ -f "package.json" ]; then
+            echo "STACK=Node.js / Express" >> $GITHUB_ENV
+          else
+            echo "STACK=Unknown" >> $GITHUB_ENV
+          fi
+
+      - name: Run Semgrep Static Security Scan
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: p/ci p/security-audit p/owasp-top-ten
+        continue-on-error: true
+
+      - name: Run Gitleaks Secret Scanner
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Run Trivy Vulnerability Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          ignore-unfixed: true
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+        continue-on-error: true
+
+      - name: Upload Security Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-reports
+          path: |
+            trivy-results.sarif
+            security-review.md
+            backend-security-review.xlsx
+
+      - name: Publish GitHub Step Summary
+        run: |
+          echo "# 🛡️ Security Audit Summary" >> $GITHUB_STEP_SUMMARY
+          echo "**Detected Stack:** ${{ env.STACK }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Review Mode:** Static Application Security Testing (SAST)" >> $GITHUB_STEP_SUMMARY
+          echo "Security scan artifacts uploaded successfully." >> $GITHUB_STEP_SUMMARY
