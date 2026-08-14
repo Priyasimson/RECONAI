@@ -217,15 +217,16 @@ export function App() {
     // 3. Fallback to Express backend if needed
     if (!savedPatient) {
       try {
-        const authHeaders = currentUser ? {
-          'X-User-Id': currentUser.id || '',
-          'X-User-Email': currentUser.email || '',
-          'X-User-Role': currentUser.role || 'SURGEON'
-        } : {};
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (currentUser) {
+          headers['X-User-Id'] = currentUser.id || '';
+          headers['X-User-Email'] = currentUser.email || '';
+          headers['X-User-Role'] = currentUser.role || 'SURGEON';
+        }
 
         const response = await fetch('/api/patients', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...authHeaders },
+          headers,
           body: JSON.stringify(patientData)
         });
         if (response.ok) {
