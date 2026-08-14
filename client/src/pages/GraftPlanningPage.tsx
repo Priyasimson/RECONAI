@@ -45,10 +45,21 @@ export function GraftPlanningPage({ patient, onRefresh }: GraftPlanningPageProps
     };
 
     try {
-      await savePatientToSupabase(updatedPatient);
+      const savedSession = localStorage.getItem('RECONAI_USER_SESSION');
+      const userSession = savedSession ? JSON.parse(savedSession) : null;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(userSession ? {
+          'X-User-Id': userSession.id || '',
+          'X-User-Email': userSession.email || '',
+          'X-User-Role': userSession.role || 'SURGEON'
+        } : {})
+      };
+
+      await savePatientToSupabase(updatedPatient, patient.createdBy, patient.assignedDoctorId);
       await fetch(`/api/patients/${patient.id}/graft-plan`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ selectedGraft })
       }).catch((e) => console.warn('Server fallback:', e));
       await onRefresh();

@@ -9,10 +9,15 @@ static def versionToNumber(major, minor, patch) {
 }
 
 def getRNVersion() {
-  def version = providers.exec {
-    workingDir(projectDir)
-    commandLine("node", "-e", "console.log(require('react-native/package.json').version);")
-  }.standardOutput.asText.get().trim()
+  def version = "0.74.5"
+  try {
+    version = providers.exec {
+      workingDir(projectDir)
+      commandLine("node", "-e", "console.log(require('react-native/package.json').version);")
+    }.standardOutput.asText.get().trim()
+  } catch (Exception e) {
+    println "Fallback reactNativeVersion used: " + version
+  }
 
   def coreVersion = version.split("-")[0]
   def (major, minor, patch) = coreVersion.tokenize('.').collect { it.toInteger() }

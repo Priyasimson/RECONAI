@@ -39,8 +39,19 @@ export function SimulationPage({ patient, onRefresh }: SimulationPageProps) {
     };
 
     try {
-      await savePatientToSupabase(updatedPatient);
-      await fetch(`/api/patients/${patient.id}/simulation`, { method: 'POST' }).catch((e) => console.warn('Server fallback:', e));
+      const savedSession = localStorage.getItem('RECONAI_USER_SESSION');
+      const userSession = savedSession ? JSON.parse(savedSession) : null;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(userSession ? {
+          'X-User-Id': userSession.id || '',
+          'X-User-Email': userSession.email || '',
+          'X-User-Role': userSession.role || 'SURGEON'
+        } : {})
+      };
+
+      await savePatientToSupabase(updatedPatient, patient.createdBy, patient.assignedDoctorId);
+      await fetch(`/api/patients/${patient.id}/simulation`, { method: 'POST', headers }).catch((e) => console.warn('Server fallback:', e));
       await onRefresh();
     } catch (e) {
       console.error('Simulation save error:', e);

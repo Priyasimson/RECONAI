@@ -312,8 +312,17 @@ export async function fetchAuditLogs(): Promise<AuditLog[]> {
   ];
 }
 
+export function getAuthHeaders(user?: { id?: string; email?: string; role?: string } | null): Record<string, string> {
+  if (!user) return {};
+  return {
+    'X-User-Id': user.id || '',
+    'X-User-Email': user.email || '',
+    'X-User-Role': user.role || 'SURGEON'
+  };
+}
+
 // Database Helpers for Patients
-export async function fetchPatientsFromSupabase(): Promise<Patient[] | null> {
+export async function fetchPatientsFromSupabase(userEmail?: string, userRole?: string, userId?: string): Promise<Patient[] | null> {
   const client = getSupabaseClient();
   if (!client) return null;
   try {
@@ -327,7 +336,7 @@ export async function fetchPatientsFromSupabase(): Promise<Patient[] | null> {
       return null;
     }
 
-    return data.map((row) => ({
+    const mapped: Patient[] = data.map((row: any) => ({
       id: row.id,
       caseId: row.case_id,
       name: row.name,
@@ -350,19 +359,45 @@ export async function fetchPatientsFromSupabase(): Promise<Patient[] | null> {
       outcome: row.outcome,
       workflowProgress: row.workflow_progress || 1,
       status: row.status || 'Registered',
+      assignedDoctorId: row.assigned_doctor_id,
+      assignedDoctorEmail: row.assigned_doctor_email,
+      createdBy: row.created_by,
       createdAt: row.created_at
     }));
+
+    if (userRole !== 'ADMIN') {
+      const cleanEmail = userEmail ? userEmail.trim().toLowerCase() : '';
+      const cleanId = userId ? userId.trim() : '';
+
+      return mapped.filter((p: Patient) => {
+        if (!cleanEmail && !cleanId) return false;
+        const pDocId = p.assignedDoctorId;
+        const pDocEmail = p.assignedDoctorEmail ? p.assignedDoctorEmail.toLowerCase() : '';
+        const pCreatedBy = p.createdBy ? p.createdBy.toLowerCase() : '';
+
+        if (pDocId && cleanId && pDocId === cleanId) return true;
+        if (pDocEmail && cleanEmail && pDocEmail === cleanEmail) return true;
+        if (pCreatedBy && cleanEmail && pCreatedBy === cleanEmail) return true;
+
+        return false;
+      });
+    }
+
+    return mapped;
   } catch (e) {
     console.error('Supabase query exception:', e);
     return null;
   }
 }
 
-export async function savePatientToSupabase(patient: Partial<Patient>): Promise<boolean> {
+export async function savePatientToSupabase(patient: Partial<Patient>, userEmail?: string, userId?: string): Promise<boolean> {
   const client = getSupabaseClient();
   if (!client) return false;
   try {
-    const payload = {
+    const docId = userId || patient.assignedDoctorId || 'UNASSIGNED';
+    const docEmail = userEmail || patient.assignedDoctorEmail || patient.createdBy || 'UNASSIGNED';
+
+    const payload: any = {
       case_id: patient.caseId,
       name: patient.name,
       patient_id: patient.patientId,
@@ -375,6 +410,9 @@ export async function savePatientToSupabase(patient: Partial<Patient>): Promise<
       notes: patient.notes,
       workflow_progress: patient.workflowProgress || 1,
       status: patient.status || 'Registered',
+      assigned_doctor_id: docId,
+      assigned_doctor_email: docEmail,
+      created_by: docEmail,
       imaging: patient.imaging,
       analysis: patient.analysis,
       classification: patient.classification,
@@ -385,6 +423,10 @@ export async function savePatientToSupabase(patient: Partial<Patient>): Promise<
       outcome: patient.outcome
     };
 
+    if (patient.id) {
+      payload.id = patient.id;
+    }
+
     const { error } = await client.from('patients').upsert(payload, { onConflict: 'case_id' });
     if (error) {
       console.error('Supabase upsert error:', error.message);
@@ -393,6 +435,20 @@ export async function savePatientToSupabase(patient: Partial<Patient>): Promise<
     return true;
   } catch (e) {
     console.error('Supabase save exception:', e);
+    return false;
+  }
+}
+
+export async function deletePatientFromSupabase(patientIdOrCaseId: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) return false;
+  try {
+    const { error: err1 } = await client.from('patients').delete().eq('id', patientIdOrCaseId);
+    if (!err1) return true;
+    const { error: err2 } = await client.from('patients').delete().eq('case_id', patientIdOrCaseId);
+    return !err2;
+  } catch (e) {
+    console.error('Supabase delete exception:', e);
     return false;
   }
 }

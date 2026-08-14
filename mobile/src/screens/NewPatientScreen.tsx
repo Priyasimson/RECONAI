@@ -15,9 +15,11 @@ import { savePatientToSupabase } from '../lib/supabase';
 interface NewPatientScreenProps {
   onPatientCreated: (patient: Patient) => void;
   onCancel: () => void;
+  userEmail?: string;
+  userId?: string;
 }
 
-export function NewPatientScreen({ onPatientCreated, onCancel }: NewPatientScreenProps) {
+export function NewPatientScreen({ onPatientCreated, onCancel, userEmail, userId }: NewPatientScreenProps) {
   const [name, setName] = useState('');
   const [patientId, setPatientId] = useState('');
   const [age, setAge] = useState('');
@@ -53,12 +55,15 @@ export function NewPatientScreen({ onPatientCreated, onCancel }: NewPatientScree
       defectLocation: defectLocation.trim() || `${anatomy} defect site`,
       notes: notes.trim() || 'Primary reconstruction planned.',
       workflowProgress: 1,
-      status: 'Registered'
+      status: 'Registered',
+      assignedDoctorId: userId || 'UNASSIGNED',
+      assignedDoctorEmail: userEmail || 'UNASSIGNED',
+      createdBy: userEmail || 'UNASSIGNED'
     };
 
     try {
-      // Save directly to Supabase
-      await savePatientToSupabase(newPatient);
+      // Save directly to shared Supabase DB
+      await savePatientToSupabase(newPatient, userEmail, userId);
       onPatientCreated(newPatient);
     } catch (e) {
       console.warn('Failed to save to Supabase directly:', e);
@@ -71,7 +76,10 @@ export function NewPatientScreen({ onPatientCreated, onCancel }: NewPatientScree
   return (
     <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <View style={styles.headerBar}>
-        <Text style={styles.title}>NEW PATIENT REGISTRATION</Text>
+        <View>
+          <Text style={styles.title}>NEW PATIENT REGISTRATION</Text>
+          <Text style={styles.subtitle}>Register new case to shared surgical database</Text>
+        </View>
         <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
           <Text style={styles.cancelText}>Cancel</Text>
         </TouchableOpacity>
@@ -82,18 +90,18 @@ export function NewPatientScreen({ onPatientCreated, onCancel }: NewPatientScree
         <TextInput
           style={styles.input}
           placeholder="e.g. Eleanor Vance"
-          placeholderTextColor="#64748b"
+          placeholderTextColor="#94a3b8"
           value={name}
           onChangeText={setName}
         />
 
         <View style={styles.row}>
           <View style={styles.halfCol}>
-            <Text style={styles.label}>Patient ID</Text>
+            <Text style={styles.label}>Patient ID (MRN)</Text>
             <TextInput
               style={styles.input}
               placeholder="PID-8842"
-              placeholderTextColor="#64748b"
+              placeholderTextColor="#94a3b8"
               value={patientId}
               onChangeText={setPatientId}
             />
@@ -103,7 +111,7 @@ export function NewPatientScreen({ onPatientCreated, onCancel }: NewPatientScree
             <TextInput
               style={styles.input}
               placeholder="44"
-              placeholderTextColor="#64748b"
+              placeholderTextColor="#94a3b8"
               keyboardType="number-pad"
               value={age}
               onChangeText={setAge}
@@ -141,7 +149,7 @@ export function NewPatientScreen({ onPatientCreated, onCancel }: NewPatientScree
         <TextInput
           style={styles.input}
           placeholder="e.g. Osteoradionecrosis, Tumor Resection, Trauma"
-          placeholderTextColor="#64748b"
+          placeholderTextColor="#94a3b8"
           value={indication}
           onChangeText={setIndication}
         />
@@ -150,7 +158,7 @@ export function NewPatientScreen({ onPatientCreated, onCancel }: NewPatientScree
         <TextInput
           style={styles.input}
           placeholder="e.g. Left mandibular angle extending to body"
-          placeholderTextColor="#64748b"
+          placeholderTextColor="#94a3b8"
           value={defectLocation}
           onChangeText={setDefectLocation}
         />
@@ -159,7 +167,7 @@ export function NewPatientScreen({ onPatientCreated, onCancel }: NewPatientScree
         <TextInput
           style={[styles.input, styles.textArea]}
           placeholder="Pre-op considerations, soft tissue status, radiation history…"
-          placeholderTextColor="#64748b"
+          placeholderTextColor="#94a3b8"
           multiline
           numberOfLines={3}
           value={notes}
@@ -181,53 +189,66 @@ export function NewPatientScreen({ onPatientCreated, onCancel }: NewPatientScree
 const styles = StyleSheet.create({
   container: {
     padding: 16,
-    backgroundColor: '#0f172a'
+    backgroundColor: '#f8fafc'
   },
   headerBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16
+    marginBottom: 14
   },
   title: {
-    color: '#ffffff',
+    color: '#0f172a',
     fontSize: 18,
     fontWeight: '900',
-    letterSpacing: 1
+    letterSpacing: 0.5
+  },
+  subtitle: {
+    color: '#64748b',
+    fontSize: 11
+  },
+  cancelBtn: {
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#cbd5e1'
   },
   cancelText: {
-    color: '#94a3b8',
-    fontSize: 13
+    color: '#475569',
+    fontSize: 12,
+    fontWeight: '700'
   },
   formCard: {
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     borderRadius: 20,
     padding: 18,
     borderWidth: 1,
-    borderColor: '#334155'
+    borderColor: '#e2e8f0'
   },
   label: {
-    color: '#cbd5e1',
-    fontSize: 11,
-    fontWeight: '700',
+    color: '#64748b',
+    fontSize: 10,
+    fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 6,
-    marginTop: 6
+    marginBottom: 4,
+    marginTop: 8
   },
   input: {
-    backgroundColor: '#0f172a',
+    backgroundColor: '#f8fafc',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#334155',
-    color: '#ffffff',
+    borderColor: '#cbd5e1',
+    color: '#0f172a',
     paddingHorizontal: 14,
     paddingVertical: 10,
     fontSize: 13,
-    marginBottom: 8
+    marginBottom: 6
   },
   textArea: {
-    height: 80,
+    height: 70,
     textAlignVertical: 'top'
   },
   row: {
@@ -240,56 +261,56 @@ const styles = StyleSheet.create({
   genderRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 10
+    marginBottom: 6
   },
   genderChip: {
     flex: 1,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#f8fafc',
     borderRadius: 10,
     paddingVertical: 8,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#334155'
+    borderColor: '#cbd5e1'
   },
   genderChipActive: {
     backgroundColor: '#2563eb',
     borderColor: '#2563eb'
   },
   genderText: {
-    color: '#94a3b8',
+    color: '#64748b',
     fontSize: 12,
     fontWeight: '600'
   },
   genderTextActive: {
     color: '#ffffff',
-    fontWeight: '700'
+    fontWeight: '800'
   },
   anatomyGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
-    marginBottom: 10
+    marginBottom: 6
   },
   anatomyChip: {
-    backgroundColor: '#0f172a',
+    backgroundColor: '#f8fafc',
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: '#334155'
+    borderColor: '#cbd5e1'
   },
   anatomyChipActive: {
     backgroundColor: '#2563eb',
     borderColor: '#2563eb'
   },
   anatomyText: {
-    color: '#94a3b8',
+    color: '#64748b',
     fontSize: 11,
     fontWeight: '600'
   },
   anatomyTextActive: {
     color: '#ffffff',
-    fontWeight: '700'
+    fontWeight: '800'
   },
   submitBtn: {
     backgroundColor: '#2563eb',
@@ -302,13 +323,5 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '800'
-  },
-  cancelBtn: {
-    backgroundColor: '#1e293b',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#334155'
   }
 });

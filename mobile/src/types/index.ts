@@ -87,6 +87,9 @@ export interface Patient {
   } | null;
   workflowProgress: number;
   status: string;
+  assignedDoctorId?: string;
+  assignedDoctorEmail?: string;
+  createdBy?: string;
   createdAt?: string;
 }
 
@@ -108,6 +111,7 @@ export interface UserProfile {
 }
 
 export interface UserSession {
+  id?: string;
   email: string;
   role?: string;
   name?: string;

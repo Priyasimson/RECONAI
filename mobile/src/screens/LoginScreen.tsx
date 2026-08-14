@@ -125,6 +125,7 @@ export function LoginScreen({ onLoginSuccess, onOpenConfig }: LoginScreenProps) 
       // 6. Successful Authentication & Authorization
       await logAuditEvent(cleanEmail, profile.role, 'USER_LOGIN', `Successful mobile login via Supabase Auth`, 'SUCCESS');
       onLoginSuccess({
+        id: profile.id,
         email: profile.email,
         role: profile.role,
         name: profile.fullName

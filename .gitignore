@@ -6,3 +6,8 @@ server/data/
 .env.*
 .DS_Store
 mobile/.expo/
+*.apk
+*.tsbuildinfo
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/android/build/

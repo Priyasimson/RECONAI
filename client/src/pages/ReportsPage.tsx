@@ -1,18 +1,22 @@
 import { useState, useEffect } from 'react';
-import { FileText, Printer, Sparkles, CheckCircle2 } from 'lucide-react';
+import { FileText, Printer, Sparkles, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { savePatientToSupabase } from '../lib/supabase';
 
 interface ReportsPageProps {
   patient: any;
   onRefresh: () => Promise<void>;
+  onCloseCase?: (patient: any) => Promise<void>;
 }
 
-export function ReportsPage({ patient, onRefresh }: ReportsPageProps) {
+export function ReportsPage({ patient, onRefresh, onCloseCase }: ReportsPageProps) {
   const [localReport, setLocalReport] = useState<any>(null);
   const [generating, setGenerating] = useState(false);
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [closing, setClosing] = useState(false);
 
   useEffect(() => {
     if (patient?.report) setLocalReport(patient.report);
+    else setLocalReport(null);
   }, [patient]);
 
   const generate = async () => {
@@ -53,8 +57,19 @@ Report Generated: ${new Date().toLocaleString()}`;
     };
 
     try {
-      await savePatientToSupabase(updatedPatient);
-      await fetch(`/api/patients/${patient.id}/report`, { method: 'POST' }).catch((e) => console.warn('Server fallback:', e));
+      const savedSession = localStorage.getItem('RECONAI_USER_SESSION');
+      const userSession = savedSession ? JSON.parse(savedSession) : null;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(userSession ? {
+          'X-User-Id': userSession.id || '',
+          'X-User-Email': userSession.email || '',
+          'X-User-Role': userSession.role || 'SURGEON'
+        } : {})
+      };
+
+      await savePatientToSupabase(updatedPatient, patient.createdBy, patient.assignedDoctorId);
+      await fetch(`/api/patients/${patient.id}/report`, { method: 'POST', headers }).catch((e) => console.warn('Server fallback:', e));
       await onRefresh();
     } catch (e) {
       console.error('Report save error:', e);
@@ -63,24 +78,29 @@ Report Generated: ${new Date().toLocaleString()}`;
     }
   };
 
-  const printReport = async () => {
+  const printReport = () => {
     window.print();
-    if (patient) {
-      const resetPatient = { ...patient, imaging: null };
-      try {
-        await savePatientToSupabase(resetPatient);
-        await onRefresh();
-      } catch (e) {
-        console.warn('Imaging reset after print error:', e);
-      }
+  };
+
+  const handleConfirmClose = async () => {
+    if (!patient || !onCloseCase) return;
+    try {
+      setClosing(true);
+      await onCloseCase(patient);
+    } catch (e) {
+      console.error('Close case error:', e);
+    } finally {
+      setClosing(false);
+      setShowCloseModal(false);
     }
   };
 
   const reportText = localReport?.content || patient?.report?.content;
+  const isClosed = patient?.status === 'Closed';
 
   return (
     <div className="space-y-6">
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm flex items-center justify-between">
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="rounded-2xl bg-blue-600 p-3 text-white"><FileText size={20} /></div>
           <div>
@@ -89,7 +109,7 @@ Report Generated: ${new Date().toLocaleString()}`;
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {reportText && (
             <button
               onClick={printReport}
@@ -99,14 +119,27 @@ Report Generated: ${new Date().toLocaleString()}`;
               <span>Print / Export PDF</span>
             </button>
           )}
-          <button
-            onClick={generate}
-            disabled={generating}
-            className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold px-5 py-2.5 rounded-2xl text-xs shadow-md transition disabled:opacity-50"
-          >
-            <Sparkles size={15} />
-            <span>{generating ? 'Compiling Report…' : reportText ? 'Re-Generate Report' : 'Generate Full Report'}</span>
-          </button>
+
+          {reportText && !isClosed && onCloseCase && (
+            <button
+              onClick={() => setShowCloseModal(true)}
+              className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold px-4 py-2.5 rounded-2xl text-xs shadow-md transition"
+            >
+              <XCircle size={15} />
+              <span>Close Case</span>
+            </button>
+          )}
+
+          {!isClosed && (
+            <button
+              onClick={generate}
+              disabled={generating}
+              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold px-5 py-2.5 rounded-2xl text-xs shadow-md transition disabled:opacity-50"
+            >
+              <Sparkles size={15} />
+              <span>{generating ? 'Compiling Report…' : reportText ? 'Re-Generate Report' : 'Generate Full Report'}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -114,9 +147,9 @@ Report Generated: ${new Date().toLocaleString()}`;
         <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
           <div className="text-base font-bold text-slate-800">Official Clinical Summary</div>
           {reportText && (
-            <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-semibold bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+            <div className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full border ${isClosed ? 'bg-slate-100 text-slate-700 border-slate-300' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
               <CheckCircle2 size={14} />
-              <span>Report Ready & Synced</span>
+              <span>{isClosed ? 'Case Closed & Saved in Records' : 'Report Ready & Synced'}</span>
             </div>
           )}
         </div>
@@ -125,6 +158,44 @@ Report Generated: ${new Date().toLocaleString()}`;
           {reportText || 'Click "Generate Full Report" above to compile patient imaging, AI volumetric analysis, graft choice, and biomechanical simulation.'}
         </div>
       </div>
+
+      {/* Close Case Confirmation Modal */}
+      {showCloseModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl space-y-4 border border-slate-100 animate-in fade-in zoom-in duration-150">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="rounded-2xl bg-rose-100 p-3"><AlertTriangle size={24} /></div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Close Reconstruction Case</h3>
+                <p className="text-xs text-slate-500">{patient?.name} ({patient?.caseId})</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to close this reconstruction case?
+              <br /><br />
+              This will mark the case as <strong>Closed</strong> and move it to <strong>Closed Cases</strong>. The historical record will remain saved in Patient Records, and your active workspace will be cleared.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                onClick={() => setShowCloseModal(false)}
+                disabled={closing}
+                className="px-4 py-2.5 rounded-2xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmClose}
+                disabled={closing}
+                className="px-5 py-2.5 rounded-2xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-md transition disabled:opacity-50"
+              >
+                {closing ? 'Closing Case…' : 'Close Case'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

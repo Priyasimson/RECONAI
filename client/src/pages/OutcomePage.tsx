@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ActivitySquare } from 'lucide-react';
+import { savePatientToSupabase } from '../lib/supabase';
 
 interface OutcomePageProps {
   patient: any;
@@ -9,24 +10,50 @@ interface OutcomePageProps {
 export function OutcomePage({ patient, onRefresh }: OutcomePageProps) {
   const [form, setForm] = useState({
     followUpDate: '2026-12-01',
-    boneHealing: 'Progressing',
-    graftIntegration: 'Moderate',
+    boneHealing: 'Complete',
+    graftIntegration: 'Full Integration',
     softTissueHealing: 'Good',
     alignment: 'Stable',
     complications: 'None',
-    painScore: '2/10',
-    functionalOutcome: 'Improving',
-    notes: 'Follow-up review pending.'
+    painScore: '0/10',
+    functionalOutcome: 'Restored',
+    notes: 'Case reconstruction completed successfully.',
+    caseStatus: 'Completed'
   });
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    const response = await fetch(`/api/patients/${patient.id}/outcome`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form)
-    });
-    await response.json();
+    if (!patient) return;
+
+    const updatedPatient = {
+      ...patient,
+      status: form.caseStatus,
+      outcome: form
+    };
+
+    const savedSession = localStorage.getItem('RECONAI_USER_SESSION');
+    const userSession = savedSession ? JSON.parse(savedSession) : null;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(userSession ? {
+        'X-User-Id': userSession.id || '',
+        'X-User-Email': userSession.email || '',
+        'X-User-Role': userSession.role || 'SURGEON'
+      } : {})
+    };
+
+    await savePatientToSupabase(updatedPatient, patient.createdBy, patient.assignedDoctorId);
+
+    try {
+      await fetch(`/api/patients/${patient.id}/outcome`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(form)
+      });
+    } catch (e) {
+      console.warn('Backend outcome endpoint warning:', e);
+    }
+
     await onRefresh();
   };
 
@@ -44,6 +71,12 @@ export function OutcomePage({ patient, onRefresh }: OutcomePageProps) {
 
       <form onSubmit={submit} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="grid gap-4 md:grid-cols-2">
+          <label className="text-sm font-medium text-slate-600">Reconstruction Case Status
+            <select className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-blue-600" value={form.caseStatus} onChange={(event) => setForm({ ...form, caseStatus: event.target.value })}>
+              <option value="Completed">Completed (Mark Case Finished)</option>
+              <option value="Active / In Progress">Active / In Progress</option>
+            </select>
+          </label>
           <label className="text-sm font-medium text-slate-600">Follow-up date<input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2" value={form.followUpDate} onChange={(event) => setForm({ ...form, followUpDate: event.target.value })} /></label>
           <label className="text-sm font-medium text-slate-600">Bone healing<input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2" value={form.boneHealing} onChange={(event) => setForm({ ...form, boneHealing: event.target.value })} /></label>
           <label className="text-sm font-medium text-slate-600">Graft integration<input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2" value={form.graftIntegration} onChange={(event) => setForm({ ...form, graftIntegration: event.target.value })} /></label>

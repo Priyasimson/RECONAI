@@ -30,45 +30,32 @@ export default function App() {
   // Config Modal
   const [configModalVisible, setConfigModalVisible] = useState(false);
 
-  const loadData = async () => {
+  const loadData = async (activeSession?: UserSession | null) => {
+    const currentSess = activeSession !== undefined ? activeSession : session;
     setLoading(true);
     try {
-      const data = await fetchPatientsFromSupabase();
+      const data = await fetchPatientsFromSupabase(currentSess?.email, currentSess?.role, currentSess?.id);
       if (data && data.length > 0) {
         setPatients(data);
-        if (!activePatientId) setActivePatientId(data[0].id);
+        setActivePatientId((prev) => (prev && data.some((p) => p.id === prev) ? prev : data[0].id));
       } else {
-        // Fallback default sample patient
-        const sample: Patient = {
-          id: '10240',
-          caseId: 'RECON-10240',
-          name: 'Eleanor Vance',
-          patientId: 'PID-8842',
-          age: '44',
-          gender: 'Female',
-          contact: '+1 555-0192',
-          anatomy: 'Mandible Body',
-          indication: 'Osteoradionecrosis post-radiotherapy',
-          defectLocation: 'Left mandibular angle & body',
-          notes: 'Surgical resection planned. Microvascular reconstruction required.',
-          workflowProgress: 1,
-          status: 'Registered'
-        };
-        setPatients([sample]);
-        setActivePatientId(sample.id);
+        setPatients([]);
+        setActivePatientId(null);
       }
     } catch (e) {
       console.warn('Mobile load error:', e);
+      setPatients([]);
+      setActivePatientId(null);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    loadData(session);
+  }, [session]);
 
-  const activePatient = patients.find((p) => p.id === activePatientId) || patients[0] || null;
+  const activePatient = activePatientId ? patients.find((p) => p.id === activePatientId) || null : null;
 
   const handlePatientCreated = (newPatient: Patient) => {
     setPatients((prev) => [newPatient, ...prev]);
@@ -97,7 +84,7 @@ export default function App() {
 
   if (!session) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: '#0f172a' }]}>
         <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
         <LoginScreen
           onLoginSuccess={(s) => setSession(s)}
@@ -114,13 +101,14 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
 
       {/* Main Screen Router */}
       {currentScreen === 'dashboard' && (
         <DashboardScreen
           session={session}
           patient={activePatient}
+          patients={patients}
           onNavigate={handleNavigate}
           onOpenConfig={() => setConfigModalVisible(true)}
           onLogout={async () => {
@@ -134,6 +122,9 @@ export default function App() {
         <PatientListScreen
           patients={patients}
           activePatientId={activePatientId}
+          userEmail={session.email}
+          userId={session.id}
+          onRefreshData={async () => { await loadData(session); }}
           onSelectPatient={(id) => {
             setActivePatientId(id);
             setCurrentScreen('workflow');
@@ -144,6 +135,8 @@ export default function App() {
 
       {currentScreen === 'new_patient' && (
         <NewPatientScreen
+          userEmail={session.email}
+          userId={session.id}
           onPatientCreated={handlePatientCreated}
           onCancel={() => setCurrentScreen('dashboard')}
         />
@@ -158,7 +151,7 @@ export default function App() {
         />
       )}
 
-      {/* Mobile Bottom Tab Bar */}
+      {/* Mobile Bottom Tab Bar (Clean Light Theme matching Web UI) */}
       <View style={styles.bottomNav}>
         <TouchableOpacity
           style={styles.navItem}
@@ -205,26 +198,26 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#0f172a'
+    backgroundColor: '#f8fafc'
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#f8fafc',
     justifyContent: 'center',
     alignItems: 'center'
   },
   loadingText: {
-    color: '#94a3b8',
+    color: '#64748b',
     marginTop: 12,
     fontSize: 13,
     fontWeight: '600'
   },
   bottomNav: {
     flexDirection: 'row',
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     borderTopWidth: 1,
-    borderTopColor: '#334155',
-    paddingVertical: 8
+    borderTopColor: '#e2e8f0',
+    paddingVertical: 10
   },
   navItem: {
     flex: 1,
@@ -244,6 +237,6 @@ const styles = StyleSheet.create({
     marginTop: 2
   },
   navLabelActive: {
-    color: '#60a5fa'
+    color: '#2563eb'
   }
 });

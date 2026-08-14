@@ -35,6 +35,9 @@ async function syncPatientToSupabase(patient) {
       notes: patient.notes,
       workflow_progress: patient.workflowProgress || 1,
       status: patient.status || 'Registered',
+      assigned_doctor_id: patient.assignedDoctorId || 'UNASSIGNED',
+      assigned_doctor_email: patient.assignedDoctorEmail || 'UNASSIGNED',
+      created_by: patient.createdBy || 'UNASSIGNED',
       imaging: patient.imaging,
       analysis: patient.analysis,
       classification: patient.classification,
@@ -62,7 +65,9 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+// Pre-provisioned Multi-Doctor Dataset
 const patients = [
+  // Doctor A (Dr. Eleanor Vance - dr.vance@reconai.com / p-surg-01)
   {
     id: '10240',
     caseId: 'RECON-10240',
@@ -85,18 +90,180 @@ const patients = [
     report: null,
     outcome: null,
     workflowProgress: 1,
-    status: 'Registered'
+    status: 'Registered',
+    assignedDoctorId: 'p-surg-01',
+    assignedDoctorEmail: 'dr.vance@reconai.com',
+    createdBy: 'dr.vance@reconai.com'
+  },
+  {
+    id: '10241',
+    caseId: 'RECON-10241',
+    name: 'Marcus Brody',
+    patientId: 'PID-9011',
+    age: '52',
+    gender: 'Male',
+    contact: '+1 555-0195',
+    anatomy: 'Mandible Angle',
+    indication: 'Ameloblastoma resection defect',
+    defectLocation: 'Right mandibular ramus & angle',
+    notes: 'Fibula free flap scheduled.',
+    documents: [],
+    imaging: null,
+    analysis: null,
+    classification: null,
+    graftPlan: null,
+    fixation: null,
+    simulation: null,
+    report: null,
+    outcome: null,
+    workflowProgress: 1,
+    status: 'Registered',
+    assignedDoctorId: 'p-surg-01',
+    assignedDoctorEmail: 'dr.vance@reconai.com',
+    createdBy: 'dr.vance@reconai.com'
+  },
+  // Doctor B (Dr. Arthur Smith - dr.smith@reconai.com / p-surg-02)
+  {
+    id: '10242',
+    caseId: 'RECON-10242',
+    name: 'Sarah Connor',
+    patientId: 'PID-4102',
+    age: '38',
+    gender: 'Female',
+    contact: '+1 555-0198',
+    anatomy: 'Maxilla',
+    indication: 'Squamous cell carcinoma post-maxillectomy',
+    defectLocation: 'Left maxilla anterior & floor of orbit',
+    notes: 'Zygomatic implant graft plan required.',
+    documents: [],
+    imaging: null,
+    analysis: null,
+    classification: null,
+    graftPlan: null,
+    fixation: null,
+    simulation: null,
+    report: null,
+    outcome: null,
+    workflowProgress: 1,
+    status: 'Registered',
+    assignedDoctorId: 'p-surg-02',
+    assignedDoctorEmail: 'dr.smith@reconai.com',
+    createdBy: 'dr.smith@reconai.com'
+  },
+  {
+    id: '10243',
+    caseId: 'RECON-10243',
+    name: 'James Logan',
+    patientId: 'PID-4105',
+    age: '49',
+    gender: 'Male',
+    contact: '+1 555-0199',
+    anatomy: 'Mandible Symphysis',
+    indication: 'Gunshot trauma defect',
+    defectLocation: 'Anterior mandibular symphysis',
+    notes: 'Custom titanium plate fixation plan.',
+    documents: [],
+    imaging: null,
+    analysis: null,
+    classification: null,
+    graftPlan: null,
+    fixation: null,
+    simulation: null,
+    report: null,
+    outcome: null,
+    workflowProgress: 1,
+    status: 'Registered',
+    assignedDoctorId: 'p-surg-02',
+    assignedDoctorEmail: 'dr.smith@reconai.com',
+    createdBy: 'dr.smith@reconai.com'
+  },
+  // Unassigned Patient (Only visible to Admin)
+  {
+    id: '10244',
+    caseId: 'RECON-10244',
+    name: 'Robert Chen',
+    patientId: 'PID-9901',
+    age: '61',
+    gender: 'Male',
+    contact: '+1 555-0210',
+    anatomy: 'Mandible Body',
+    indication: 'Trauma injury defect',
+    defectLocation: 'Right mandibular body',
+    notes: 'Pending primary surgeon assignment.',
+    documents: [],
+    imaging: null,
+    analysis: null,
+    classification: null,
+    graftPlan: null,
+    fixation: null,
+    simulation: null,
+    report: null,
+    outcome: null,
+    workflowProgress: 1,
+    status: 'Registered',
+    assignedDoctorId: 'UNASSIGNED',
+    assignedDoctorEmail: 'UNASSIGNED',
+    createdBy: 'UNASSIGNED'
   }
 ];
-let nextCaseNumber = 10241;
+let nextCaseNumber = 10245;
 
 const createCaseId = () => `RECON-${nextCaseNumber++}`;
 
+// Authentication & Access Control Helpers
+function getAuthUser(req) {
+  const userId = req.headers['x-user-id'] || req.headers['x-doctor-id'] || '';
+  const userEmail = (req.headers['x-user-email'] || req.headers['x-doctor-email'] || '').toLowerCase();
+  const userRole = (req.headers['x-user-role'] || 'SURGEON').toUpperCase();
+  return { id: userId, email: userEmail, role: userRole };
+}
+
+function checkPatientAccess(user, patient) {
+  if (!patient) return false;
+  if (user.role === 'ADMIN') return true;
+  if (!user.email && !user.id) return false;
+
+  const doctorId = user.id;
+  const doctorEmail = user.email ? user.email.toLowerCase() : '';
+
+  const pDocId = patient.assignedDoctorId;
+  const pDocEmail = patient.assignedDoctorEmail ? patient.assignedDoctorEmail.toLowerCase() : '';
+  const pCreatedBy = patient.createdBy ? patient.createdBy.toLowerCase() : '';
+
+  if (pDocId && doctorId && pDocId === doctorId) return true;
+  if (pDocEmail && doctorEmail && pDocEmail === doctorEmail) return true;
+  if (pCreatedBy && doctorEmail && pCreatedBy === doctorEmail) return true;
+
+  return false;
+}
+
+function findPatientById(paramId) {
+  return patients.find((entry) => entry.id === paramId || entry.caseId === paramId) || null;
+}
+
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-app.get('/api/patients', (_req, res) => res.json(patients));
+app.get('/api/patients', (req, res) => {
+  const user = getAuthUser(req);
+  if (user.role === 'ADMIN') {
+    return res.json(patients);
+  }
+  const filtered = patients.filter((p) => checkPatientAccess(user, p));
+  res.json(filtered);
+});
+
+app.get('/api/patients/:id', (req, res) => {
+  const user = getAuthUser(req);
+  const patient = findPatientById(req.params.id);
+  if (!patient) return res.status(404).json({ error: 'Patient not found' });
+  if (!checkPatientAccess(user, patient)) {
+    return res.status(403).json({ error: '403 Forbidden: You are not authorized to access this patient.' });
+  }
+  res.json(patient);
+});
 
 app.post('/api/patients', (req, res) => {
+  const user = getAuthUser(req);
   const patient = {
     id: String(Date.now()),
     caseId: createCaseId(),
@@ -119,40 +286,34 @@ app.post('/api/patients', (req, res) => {
     report: null,
     outcome: null,
     workflowProgress: 1,
-    status: 'Registered'
+    status: 'Registered',
+    assignedDoctorId: user.id || req.body.assignedDoctorId || 'p-surg-01',
+    assignedDoctorEmail: user.email || req.body.assignedDoctorEmail || 'dr.vance@reconai.com',
+    createdBy: user.email || req.body.createdBy || 'dr.vance@reconai.com'
   };
   patients.push(patient);
+  syncPatientToSupabase(patient);
   res.status(201).json(patient);
 });
 
-function findOrCreatePatient(paramId) {
-  let patient = patients.find((entry) => entry.id === paramId || entry.caseId === paramId);
-  if (!patient && patients.length > 0) {
-    patient = patients[0];
+app.delete('/api/patients/:id', (req, res) => {
+  const user = getAuthUser(req);
+  const index = patients.findIndex((p) => p.id === req.params.id || p.caseId === req.params.id);
+  if (index === -1) return res.status(404).json({ error: 'Patient not found' });
+  if (!checkPatientAccess(user, patients[index])) {
+    return res.status(403).json({ error: '403 Forbidden: You are not authorized to delete this patient.' });
   }
-  if (!patient) {
-    patient = {
-      id: paramId,
-      caseId: paramId.startsWith('RECON-') ? paramId : `RECON-${paramId}`,
-      name: 'Eleanor Vance',
-      patientId: 'PID-8842',
-      age: '44',
-      gender: 'Female',
-      contact: '+1 555-0192',
-      anatomy: 'Mandible Body',
-      indication: 'Osteoradionecrosis post-radiotherapy',
-      defectLocation: 'Left mandibular angle & body',
-      notes: 'Surgical resection planned.',
-      workflowProgress: 1,
-      status: 'Registered'
-    };
-    patients.push(patient);
-  }
-  return patient;
-}
+  patients.splice(index, 1);
+  res.json({ success: true });
+});
 
 app.post('/api/patients/:id/upload', upload.single('file'), (req, res) => {
-  const patient = findOrCreatePatient(req.params.id);
+  const user = getAuthUser(req);
+  const patient = findPatientById(req.params.id);
+  if (!patient) return res.status(404).json({ error: 'Patient not found' });
+  if (!checkPatientAccess(user, patient)) {
+    return res.status(403).json({ error: '403 Forbidden: You are not authorized to upload images for this patient.' });
+  }
 
   const file = req.file;
   if (!file) return res.status(400).json({ error: 'No file uploaded' });
@@ -183,7 +344,12 @@ app.get('/api/files/:filename', (req, res) => {
 });
 
 app.post('/api/patients/:id/analysis', (req, res) => {
-  const patient = findOrCreatePatient(req.params.id);
+  const user = getAuthUser(req);
+  const patient = findPatientById(req.params.id);
+  if (!patient) return res.status(404).json({ error: 'Patient not found' });
+  if (!checkPatientAccess(user, patient)) {
+    return res.status(403).json({ error: '403 Forbidden: You are not authorized to run AI analysis for this patient.' });
+  }
 
   const analysis = {
     summary: 'Demo/simulation analysis mode',
@@ -212,7 +378,12 @@ app.post('/api/patients/:id/analysis', (req, res) => {
 });
 
 app.post('/api/patients/:id/classification', (req, res) => {
-  const patient = findOrCreatePatient(req.params.id);
+  const user = getAuthUser(req);
+  const patient = findPatientById(req.params.id);
+  if (!patient) return res.status(404).json({ error: 'Patient not found' });
+  if (!checkPatientAccess(user, patient)) {
+    return res.status(403).json({ error: '403 Forbidden: You are not authorized to access this patient.' });
+  }
 
   const analysis = patient.analysis || {};
   const severity = analysis.boneVolumeMissing > 35 ? 'Complex' : analysis.boneVolumeMissing > 20 ? 'Large' : analysis.boneVolumeMissing > 10 ? 'Moderate' : 'Small';
@@ -234,7 +405,12 @@ app.post('/api/patients/:id/classification', (req, res) => {
 });
 
 app.post('/api/patients/:id/graft-plan', (req, res) => {
-  const patient = findOrCreatePatient(req.params.id);
+  const user = getAuthUser(req);
+  const patient = findPatientById(req.params.id);
+  if (!patient) return res.status(404).json({ error: 'Patient not found' });
+  if (!checkPatientAccess(user, patient)) {
+    return res.status(403).json({ error: '403 Forbidden: You are not authorized to access this patient.' });
+  }
 
   const classification = patient.classification || {};
   const graftPlan = {
@@ -259,7 +435,12 @@ app.post('/api/patients/:id/graft-plan', (req, res) => {
 });
 
 app.post('/api/patients/:id/fixation', (req, res) => {
-  const patient = findOrCreatePatient(req.params.id);
+  const user = getAuthUser(req);
+  const patient = findPatientById(req.params.id);
+  if (!patient) return res.status(404).json({ error: 'Patient not found' });
+  if (!checkPatientAccess(user, patient)) {
+    return res.status(403).json({ error: '403 Forbidden: You are not authorized to access this patient.' });
+  }
 
   const fixation = {
     selectedHardware: req.body.selectedHardware || 'Reconstruction Plate',
@@ -278,7 +459,12 @@ app.post('/api/patients/:id/fixation', (req, res) => {
 });
 
 app.post('/api/patients/:id/simulation', (req, res) => {
-  const patient = findOrCreatePatient(req.params.id);
+  const user = getAuthUser(req);
+  const patient = findPatientById(req.params.id);
+  if (!patient) return res.status(404).json({ error: 'Patient not found' });
+  if (!checkPatientAccess(user, patient)) {
+    return res.status(403).json({ error: '403 Forbidden: You are not authorized to access this patient.' });
+  }
 
   const simulation = {
     predictedAlignment: 98.4,
@@ -296,7 +482,13 @@ app.post('/api/patients/:id/simulation', (req, res) => {
 });
 
 app.post('/api/patients/:id/report', (req, res) => {
-  const patient = findOrCreatePatient(req.params.id);
+  const user = getAuthUser(req);
+  const patient = findPatientById(req.params.id);
+  if (!patient) return res.status(404).json({ error: 'Patient not found' });
+  if (!checkPatientAccess(user, patient)) {
+    return res.status(403).json({ error: '403 Forbidden: You are not authorized to access this patient.' });
+  }
+
   const report = {
     content: `Patient ${patient.name}\nCase ID ${patient.caseId}\nAnatomy ${patient.anatomy}\nSeverity ${patient.classification?.severity || 'Moderate'}\nSelected graft ${patient.graftPlan?.selectedGraft || 'Autogenous'}\nHardware ${patient.fixation?.selectedHardware || 'Reconstruction Plate'}`
   };
@@ -306,7 +498,13 @@ app.post('/api/patients/:id/report', (req, res) => {
 });
 
 app.post('/api/patients/:id/outcome', (req, res) => {
-  const patient = findOrCreatePatient(req.params.id);
+  const user = getAuthUser(req);
+  const patient = findPatientById(req.params.id);
+  if (!patient) return res.status(404).json({ error: 'Patient not found' });
+  if (!checkPatientAccess(user, patient)) {
+    return res.status(403).json({ error: '403 Forbidden: You are not authorized to access this patient.' });
+  }
+
   patient.outcome = req.body;
   syncPatientToSupabase(patient);
   res.json({ patient, outcome: patient.outcome });

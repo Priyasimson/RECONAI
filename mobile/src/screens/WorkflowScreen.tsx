@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -13,6 +13,7 @@ import {
 import * as DocumentPicker from 'expo-document-picker';
 import type { Patient } from '../types';
 import { savePatientToSupabase } from '../lib/supabase';
+import { runMobileUNetSegmentation } from '../lib/unetSegmentation';
 
 interface WorkflowScreenProps {
   patient: Patient;
@@ -30,6 +31,12 @@ export function WorkflowScreen({ patient, initialStep = 2, onRefreshPatient, onB
   // Local patient state
   const [patientData, setPatientData] = useState<Patient>(patient);
 
+  useEffect(() => {
+    if (patient) {
+      setPatientData(patient);
+    }
+  }, [patient]);
+
   // Imaging Upload & Processing states
   const [scanType, setScanType] = useState('Helical CT');
   const [sliceThickness, setSliceThickness] = useState('1.0 mm');
@@ -45,13 +52,51 @@ export function WorkflowScreen({ patient, initialStep = 2, onRefreshPatient, onB
   const [heatmapFilter, setHeatmapFilter] = useState<boolean>(false);
   const [measuredMm, setMeasuredMm] = useState<number | null>(null);
 
+  // Outcome & Case Closure Form State
+  const [outcomeForm, setOutcomeForm] = useState({
+    followUpDate: '2026-12-01',
+    boneHealing: 'Complete',
+    graftIntegration: 'Full Integration',
+    softTissueHealing: 'Good',
+    alignment: 'Stable',
+    complications: 'None',
+    painScore: '0/10',
+    functionalOutcome: 'Restored',
+    notes: 'Case reconstruction completed successfully.',
+    caseStatus: 'Closed'
+  });
+
+  const handleSaveOutcomeAndCloseCase = async () => {
+    setLoading(true);
+    try {
+      const updated: Patient = {
+        ...patientData,
+        status: outcomeForm.caseStatus === 'Closed' ? 'Closed' : 'Completed',
+        outcome: {
+          healingRating: outcomeForm.boneHealing,
+          complications: outcomeForm.complications,
+          followUpWeeks: outcomeForm.followUpDate,
+          functionalScore: 95,
+          aestheticScore: 95,
+          surgeonNotes: outcomeForm.notes
+        }
+      };
+      await updatePatientState(updated, 'Case reconstruction saved and marked as CLOSED!');
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Failed to save outcome.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const steps = [
     { step: 2, name: '2. Imaging Upload' },
     { step: 3, name: '3. AI Analysis' },
     { step: 4, name: '4. Classification' },
     { step: 5, name: '5. Graft Plan' },
     { step: 6, name: '6. Fixation' },
-    { step: 7, name: '7. Simulation & Report' }
+    { step: 7, name: '7. Simulation & Report' },
+    { step: 8, name: '8. Close Case' }
   ];
 
   const pipelineSteps = [
@@ -111,6 +156,10 @@ export function WorkflowScreen({ patient, initialStep = 2, onRefreshPatient, onB
 
   // Step 2: Save & Sync DICOM Metadata
   const handleSaveImagingMetadata = async () => {
+    if (!selectedFileName && !selectedFileUri && !patientData.imaging?.fileName) {
+      Alert.alert('File Required', 'Please select a DICOM or medical image file first before syncing.');
+      return;
+    }
     setLoading(true);
     setTimeout(async () => {
       const updated: Patient = {
@@ -175,17 +224,18 @@ export function WorkflowScreen({ patient, initialStep = 2, onRefreshPatient, onB
       await new Promise((r) => setTimeout(r, 250));
     }
 
-    const calculatedAnalysis = {
-      summary: '3D bone segmentation & volume loss quantification complete. Critical continuity defect identified.',
-      boneVolumeMissing: 19.8,
-      softTissueRequirement: 28.4,
-      estimatedGraftSize: 25.0,
-      defectDepth: 15.1,
-      defectWidth: 24.0,
-      defectLength: 43.2,
-      modelConfidence: 96,
-      steps: pipelineSteps
-    };
+    const img = (patientData.imaging || {}) as any;
+    const fileName = selectedFileName || img.fileName || 'DICOM_CT_HEAD_AND_NECK_512.dcm';
+
+    const calculatedAnalysis = runMobileUNetSegmentation({
+      fileName,
+      scanType,
+      sliceThickness,
+      resolution,
+      slices,
+      caseId: patientData.caseId,
+      patientName: patientData.name
+    });
 
     const updated: Patient = {
       ...patientData,
@@ -194,7 +244,7 @@ export function WorkflowScreen({ patient, initialStep = 2, onRefreshPatient, onB
       analysis: calculatedAnalysis
     };
 
-    await updatePatientState(updated, 'AI 3D Volumetric Segmentation completed with 96% confidence!');
+    await updatePatientState(updated, `nnU-Net 3D Volumetric Segmentation completed with ${calculatedAnalysis.modelConfidence}% confidence!`);
     setLoading(false);
   };
 
@@ -762,6 +812,87 @@ Report Generated: ${new Date().toLocaleString()}`;
 
           <TouchableOpacity style={styles.actionBtn} onPress={handleGenerateReport} disabled={loading}>
             {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.actionBtnText}>📑 Run 3D Simulation & Generate Report →</Text>}
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* STAGE 8: CLOSE CASE & OUTCOME EVALUATION */}
+      {activeStep === 8 && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>8. Case Outcome Evaluation & Close Case</Text>
+          <Text style={styles.cardSub}>Record final post-operative surgical outcomes and mark reconstruction case as CLOSED.</Text>
+
+          {patientData.status === 'Closed' || patientData.status === 'CLOSED' ? (
+            <View style={[styles.dataBox, { borderColor: '#10b981', backgroundColor: '#f0fdf4' }]}>
+              <Text style={[styles.dataHeader, { color: '#047857' }]}>CASE STATUS: CLOSED (ARCHIVED)</Text>
+              {patientData.outcome && (
+                <View style={{ gap: 4, marginTop: 4 }}>
+                  <Text style={{ fontSize: 11, color: '#334155' }}>Bone Healing: {patientData.outcome.healingRating}</Text>
+                  <Text style={{ fontSize: 11, color: '#334155' }}>Complications: {patientData.outcome.complications}</Text>
+                  <Text style={{ fontSize: 11, color: '#334155' }}>Notes: {patientData.outcome.surgeonNotes}</Text>
+                </View>
+              )}
+            </View>
+          ) : null}
+
+          <Text style={styles.selectLabel}>RECONSTRUCTION CASE STATUS:</Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+            <TouchableOpacity
+              style={[
+                styles.filterChip,
+                outcomeForm.caseStatus === 'Closed' && styles.filterChipActive
+              ]}
+              onPress={() => setOutcomeForm({ ...outcomeForm, caseStatus: 'Closed' })}
+            >
+              <Text style={[styles.filterChipText, outcomeForm.caseStatus === 'Closed' && styles.filterChipTextActive]}>
+                Closed (Mark Finished)
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.filterChip,
+                outcomeForm.caseStatus === 'Active' && styles.filterChipActive
+              ]}
+              onPress={() => setOutcomeForm({ ...outcomeForm, caseStatus: 'Active' })}
+            >
+              <Text style={[styles.filterChipText, outcomeForm.caseStatus === 'Active' && styles.filterChipTextActive]}>
+                Active / In Progress
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.selectLabel}>BONE HEALING RATING</Text>
+          <TextInput
+            style={styles.textInput}
+            value={outcomeForm.boneHealing}
+            onChangeText={(val) => setOutcomeForm({ ...outcomeForm, boneHealing: val })}
+          />
+
+          <Text style={styles.selectLabel}>GRAFT INTEGRATION</Text>
+          <TextInput
+            style={styles.textInput}
+            value={outcomeForm.graftIntegration}
+            onChangeText={(val) => setOutcomeForm({ ...outcomeForm, graftIntegration: val })}
+          />
+
+          <Text style={styles.selectLabel}>COMPLICATIONS</Text>
+          <TextInput
+            style={styles.textInput}
+            value={outcomeForm.complications}
+            onChangeText={(val) => setOutcomeForm({ ...outcomeForm, complications: val })}
+          />
+
+          <Text style={styles.selectLabel}>CLINICIAN NOTES</Text>
+          <TextInput
+            style={[styles.textInput, { minHeight: 60 }]}
+            multiline={true}
+            value={outcomeForm.notes}
+            onChangeText={(val) => setOutcomeForm({ ...outcomeForm, notes: val })}
+          />
+
+          <TouchableOpacity style={styles.actionBtn} onPress={handleSaveOutcomeAndCloseCase} disabled={loading}>
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.actionBtnText}>🔒 Save Outcome & Mark Case Closed →</Text>}
           </TouchableOpacity>
         </View>
       )}

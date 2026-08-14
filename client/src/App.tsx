@@ -1,6 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
-import { NavLink, Route, Routes, useNavigate, useLocation, Navigate } from 'react-router-dom';
-import { Activity, Brain, ClipboardList, FileImage, FileText, Menu, Microscope, Package, ScanLine, Settings2, UserPlus, Workflow, UserCircle2, X, LogOut, Home, ShieldAlert } from 'lucide-react';
+import { NavLink, Route, Routes, useNavigate, Navigate } from 'react-router-dom';
+import {
+  Activity,
+  Brain,
+  ClipboardList,
+  FileImage,
+  FileText,
+  Menu,
+  Microscope,
+  Package,
+  ScanLine,
+  Settings2,
+  UserPlus,
+  Workflow,
+  UserCircle2,
+  X,
+  LogOut,
+  Home
+} from 'lucide-react';
 import type { Patient } from './types';
 import { DashboardPage } from './pages/DashboardPage';
 import { PatientRegistrationPage } from './pages/PatientRegistrationPage';
@@ -14,7 +31,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { OutcomePage } from './pages/OutcomePage';
 import { RecordsPage } from './pages/RecordsPage';
 import { LoginPage } from './pages/LoginPage';
-import { fetchPatientsFromSupabase, signOutUser } from './lib/supabase';
+import { fetchPatientsFromSupabase, savePatientToSupabase, deletePatientFromSupabase, signOutUser } from './lib/supabase';
 
 // Admin Portal Components
 import { AdminLayout } from './pages/admin/AdminLayout';
@@ -46,76 +63,195 @@ const mobileBottomNav = [
   { to: '/patients/records', label: 'Records', icon: ClipboardList }
 ];
 
-function App() {
+export function App() {
   const navigate = useNavigate();
-  const location = useLocation();
 
   // Always start on Login Page first upon opening / running the app
-  const [currentUser, setCurrentUser] = useState<{ email: string; name: string; role: 'ADMIN' | 'SURGEON' | 'CLINICAL_STAFF' } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; email: string; name: string; role: 'ADMIN' | 'SURGEON' | 'CLINICAL_STAFF' } | null>(null);
 
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [activePatientId, setActivePatientId] = useState<string | null>(null);
+  const [activePatientId, setActivePatientId] = useState<string | null>(() => {
+    return localStorage.getItem('RECONAI_ACTIVE_PATIENT_ID');
+  });
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const activePatient = useMemo(
-    () => patients.find((patient) => patient.id === activePatientId) || null,
+    () => (activePatientId ? patients.find((patient) => patient.id === activePatientId) || null : null),
     [patients, activePatientId]
   );
 
-  const refreshPatients = async () => {
-    const supabaseData = await fetchPatientsFromSupabase();
-    if (supabaseData && supabaseData.length > 0) {
+  const refreshPatients = async (userToUse?: { id?: string; email: string; role: string } | null) => {
+    const user = userToUse !== undefined ? userToUse : currentUser;
+    const supabaseData = await fetchPatientsFromSupabase(user?.email, user?.role, user?.id);
+    if (supabaseData !== null) {
       setPatients(supabaseData);
-      if (!activePatientId && supabaseData[0]) {
-        setActivePatientId(supabaseData[0].id);
+      if (supabaseData.length > 0) {
+        setActivePatientId((prev) => {
+          const currentId = prev || localStorage.getItem('RECONAI_ACTIVE_PATIENT_ID');
+          if (!currentId) return supabaseData[0].id;
+          const existing = supabaseData.find(
+            (p) => p.id === currentId || p.caseId === currentId
+          );
+          const valid = existing ? existing.id : supabaseData[0].id;
+          if (valid) {
+            localStorage.setItem('RECONAI_ACTIVE_PATIENT_ID', valid);
+          }
+          return valid;
+        });
+      } else {
+        setActivePatientId(null);
+        localStorage.removeItem('RECONAI_ACTIVE_PATIENT_ID');
       }
       return;
     }
 
     try {
-      const response = await fetch('/api/patients');
+      const authHeaders: Record<string, string> = user ? {
+        'X-User-Id': user.id || '',
+        'X-User-Email': user.email || '',
+        'X-User-Role': user.role || 'SURGEON'
+      } : {};
+
+      const response = await fetch('/api/patients', { headers: authHeaders });
       const data = await response.json();
-      setPatients(data);
-      if (!activePatientId && data[0]) {
-        setActivePatientId(data[0].id);
-      } else if (activePatientId) {
-        const current = data.find((entry: Patient) => entry.id === activePatientId);
-        if (!current && data[0]) setActivePatientId(data[0].id);
+      const filtered = Array.isArray(data) ? data : [];
+      setPatients(filtered);
+      if (filtered.length > 0) {
+        setActivePatientId((prev) => {
+          const currentId = prev || localStorage.getItem('RECONAI_ACTIVE_PATIENT_ID');
+          if (!currentId) return filtered[0].id;
+          const existing = filtered.find((p: any) => p.id === currentId || p.caseId === currentId);
+          const valid = existing ? existing.id : filtered[0].id;
+          if (valid) {
+            localStorage.setItem('RECONAI_ACTIVE_PATIENT_ID', valid);
+          }
+          return valid;
+        });
+      } else {
+        setActivePatientId(null);
+        localStorage.removeItem('RECONAI_ACTIVE_PATIENT_ID');
       }
     } catch (e) {
       console.warn('Backend fetch fallback:', e);
+      setPatients([]);
+      setActivePatientId(null);
+      localStorage.removeItem('RECONAI_ACTIVE_PATIENT_ID');
     }
   };
 
   useEffect(() => {
-    refreshPatients().finally(() => setLoading(false));
-    console.log('🟢 [Supabase Cloud Database] Connected successfully! Project: https://ymqjarbchaxfiiepozec.supabase.co');
+    const savedUser = localStorage.getItem('RECONAI_USER_SESSION');
+    if (savedUser) {
+      try {
+        const user = JSON.parse(savedUser);
+        setCurrentUser(user);
+        refreshPatients(user).finally(() => setLoading(false));
+        return;
+      } catch {
+        // invalid session
+      }
+    }
+    refreshPatients(null).finally(() => setLoading(false));
   }, []);
 
-  const handleLoginSuccess = (user: { email: string; name: string; role: 'ADMIN' | 'SURGEON' | 'CLINICAL_STAFF' }) => {
+  const handleLoginSuccess = (user: { id: string; email: string; name: string; role: 'ADMIN' | 'SURGEON' | 'CLINICAL_STAFF' }) => {
     setCurrentUser(user);
     localStorage.setItem('RECONAI_USER_SESSION', JSON.stringify(user));
+    // Clear active patient from previous user session
+    localStorage.removeItem('RECONAI_ACTIVE_PATIENT_ID');
+    setActivePatientId(null);
+    refreshPatients(user);
   };
 
   const handleLogout = async () => {
     setCurrentUser(null);
     localStorage.removeItem('RECONAI_USER_SESSION');
+    localStorage.removeItem('RECONAI_ACTIVE_PATIENT_ID');
     await signOutUser();
     navigate('/login', { replace: true });
   };
 
+  const closeCase = async (patientToClose: Patient) => {
+    if (!patientToClose) return;
+    const updatedPatient = {
+      ...patientToClose,
+      status: 'Closed'
+    };
+    await savePatientToSupabase(updatedPatient, currentUser?.email, currentUser?.id);
+    setActivePatientId(null);
+    localStorage.removeItem('RECONAI_ACTIVE_PATIENT_ID');
+    await refreshPatients(currentUser);
+    navigate('/patients/records');
+  };
+
+  const deletePatient = async (patientId: string) => {
+    if (!patientId) return;
+    await deletePatientFromSupabase(patientId);
+    if (activePatientId === patientId) {
+      setActivePatientId(null);
+      localStorage.removeItem('RECONAI_ACTIVE_PATIENT_ID');
+    }
+    await refreshPatients(currentUser);
+  };
+
   const createPatient = async (payload: Partial<Patient>) => {
-    const response = await fetch('/api/patients', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    const caseId = payload.caseId || `RECON-${Math.floor(10000 + Math.random() * 90000)}`;
+    const patientData: Partial<Patient> = {
+      ...payload,
+      caseId,
+      status: 'Registered',
+      workflowProgress: 1,
+      assignedDoctorId: currentUser?.id || 'p-surg-01',
+      assignedDoctorEmail: currentUser?.email || 'dr.vance@reconai.com',
+      createdBy: currentUser?.email || 'dr.vance@reconai.com'
+    };
+
+    // 1. Save to Supabase
+    await savePatientToSupabase(patientData, currentUser?.email, currentUser?.id);
+
+    // 2. Query Supabase to get real DB record with UUID
+    const supabaseData = await fetchPatientsFromSupabase(currentUser?.email, currentUser?.role, currentUser?.id);
+    let savedPatient = supabaseData?.find((p) => p.caseId === caseId);
+
+    // 3. Fallback to Express backend if needed
+    if (!savedPatient) {
+      try {
+        const authHeaders = currentUser ? {
+          'X-User-Id': currentUser.id || '',
+          'X-User-Email': currentUser.email || '',
+          'X-User-Role': currentUser.role || 'SURGEON'
+        } : {};
+
+        const response = await fetch('/api/patients', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
+          body: JSON.stringify(patientData)
+        });
+        if (response.ok) {
+          savedPatient = await response.json();
+        }
+      } catch (e) {
+        console.warn('Local API save fallback:', e);
+      }
+    }
+
+    if (!savedPatient || !savedPatient.id) {
+      savedPatient = {
+        ...patientData,
+        id: `p-${Date.now()}`
+      } as Patient;
+    }
+
+    setPatients((current) => {
+      const exists = current.some((p) => p.caseId === caseId || p.id === savedPatient!.id);
+      return exists ? current.map((p) => (p.caseId === caseId || p.id === savedPatient!.id ? savedPatient! : p)) : [savedPatient!, ...current];
     });
-    const patient = await response.json();
-    setPatients((current) => [patient, ...current]);
-    setActivePatientId(patient.id);
+
+    setActivePatientId(savedPatient.id);
+    localStorage.setItem('RECONAI_ACTIVE_PATIENT_ID', savedPatient.id);
     navigate('/imaging');
-    return patient;
+    return savedPatient;
   };
 
   if (loading) {
@@ -129,50 +265,25 @@ function App() {
     );
   }
 
-  // 1. Unauthenticated Route Protection: Redirect any unauthenticated user to /login
-  if (!currentUser && location.pathname !== '/login') {
-    return <Navigate to="/login" replace />;
+  // 1. Unauthenticated Login Route
+  if (!currentUser) {
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage onLoginSuccess={handleLoginSuccess} />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    );
   }
 
-  // Render Login Page when at /login
-  if (location.pathname === '/login') {
-    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
-  }
-
-  // 2. Admin Portal Routes Protection (Role Check: ADMIN only)
-  if (location.pathname.startsWith('/admin')) {
-    if (currentUser?.role !== 'ADMIN') {
-      return (
-        <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 font-sans text-white">
-          <div className="max-w-md w-full rounded-3xl bg-slate-900 border border-slate-800 p-8 text-center space-y-4 shadow-2xl">
-            <div className="w-16 h-16 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto">
-              <ShieldAlert size={32} />
-            </div>
-            <h2 className="text-2xl font-bold">Unauthorized Access</h2>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Access to the ReconAI Administration Portal is restricted to Hospital Administrators only. Your account role ({currentUser?.role || 'SURGEON'}) does not have permission.
-            </p>
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="w-full rounded-2xl bg-blue-600 hover:bg-blue-500 font-bold py-3 text-xs text-white transition shadow-lg shadow-blue-500/25"
-            >
-              Return to Clinical Workspace
-            </button>
-          </div>
-        </div>
-      );
-    }
-
+  // 2. Hospital / Admin Dashboard Layout
+  if (currentUser.role === 'ADMIN') {
     return (
       <Routes>
         <Route element={<AdminLayout currentUser={currentUser} onLogout={handleLogout} />}>
           <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
           <Route path="/admin/staff" element={<StaffManagementPage />} />
           <Route path="/admin/add-surgeon" element={<AddSurgeonPage />} />
-          <Route path="/admin/pending" element={<StaffManagementPage filterStatus="PENDING" />} />
-          <Route path="/admin/active-staff" element={<StaffManagementPage filterStatus="ACTIVE" />} />
-          <Route path="/admin/suspended-staff" element={<StaffManagementPage filterStatus="SUSPENDED" />} />
-          <Route path="/admin/patient-access" element={<StaffManagementPage />} />
+          <Route path="/admin/patients" element={<RecordsPage patients={patients} onDeletePatient={deletePatient} />} />
           <Route path="/admin/departments" element={<AdminDashboardPage />} />
           <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
           <Route path="/admin/security" element={<SecuritySettingsPage />} />
@@ -209,14 +320,14 @@ function App() {
             {/* Active Case Widget */}
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm mb-3">
               <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Active Case</div>
-              <div className="mt-1 font-bold text-slate-800 truncate">{activePatient?.name || 'No patient selected'}</div>
-              <div className="text-xs font-semibold text-blue-600">{activePatient?.caseId || 'Select a patient'}</div>
-            </div>
-
-            {/* Supabase Connected Status Badge */}
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-700 font-semibold mb-4 shadow-xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>Supabase Connected</span>
+              <div className="mt-1 font-bold text-slate-800 truncate">
+                {activePatient && activePatient.status !== 'Closed' ? activePatient.name : 'No active case selected'}
+              </div>
+              <div className="text-xs font-semibold text-blue-600">
+                {activePatient && activePatient.status !== 'Closed'
+                  ? (activePatient.caseId ? `${activePatient.caseId}` : 'Select an active patient')
+                  : 'Select an active patient'}
+              </div>
             </div>
 
             {/* Navigation Links */}
@@ -341,18 +452,32 @@ function App() {
               element={
                 <DashboardPage
                   patient={activePatient}
+                  patients={patients}
                 />
               }
             />
             <Route path="/patients/new" element={<PatientRegistrationPage onCreate={createPatient} />} />
-            <Route path="/patients/records" element={<RecordsPage patients={patients} />} />
-            <Route path="/imaging" element={<ImagingUploadPage patient={activePatient} onRefresh={refreshPatients} />} />
+            <Route path="/patients/records" element={<RecordsPage patients={patients} onDeletePatient={deletePatient} />} />
+            <Route
+              path="/imaging"
+              element={
+                <ImagingUploadPage
+                  patient={activePatient}
+                  patients={patients}
+                  onSelectPatient={(id) => {
+                    setActivePatientId(id);
+                    localStorage.setItem('RECONAI_ACTIVE_PATIENT_ID', id);
+                  }}
+                  onRefresh={refreshPatients}
+                />
+              }
+            />
             <Route path="/analysis" element={<AnalysisPage patient={activePatient} onRefresh={refreshPatients} />} />
             <Route path="/classification" element={<ClassificationPage patient={activePatient} onRefresh={refreshPatients} />} />
             <Route path="/graft" element={<GraftPlanningPage patient={activePatient} onRefresh={refreshPatients} />} />
             <Route path="/fixation" element={<FixationPage patient={activePatient} onRefresh={refreshPatients} />} />
             <Route path="/simulation" element={<SimulationPage patient={activePatient} onRefresh={refreshPatients} />} />
-            <Route path="/reports" element={<ReportsPage patient={activePatient} onRefresh={refreshPatients} />} />
+            <Route path="/reports" element={<ReportsPage patient={activePatient} onRefresh={refreshPatients} onCloseCase={closeCase} />} />
             <Route path="/outcomes" element={<OutcomePage patient={activePatient} onRefresh={refreshPatients} />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

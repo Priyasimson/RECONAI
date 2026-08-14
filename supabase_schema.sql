@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS public.patients (
     notes TEXT,
     workflow_progress INT DEFAULT 1,
     status VARCHAR(50) DEFAULT 'Registered',
+    assigned_doctor_id VARCHAR(100) DEFAULT 'UNASSIGNED',
+    assigned_doctor_email VARCHAR(255) DEFAULT 'UNASSIGNED',
+    created_by VARCHAR(255) DEFAULT 'UNASSIGNED',
     imaging JSONB,
     analysis JSONB,
     classification JSONB,
@@ -98,10 +101,25 @@ VALUES
 ('Dr. Rajesh Patel', 'dr.patel@reconai.com', 'Surgeon2026!', 'SURGEON', 'Head & Neck Oncology', 'Surgical Oncology', 'MED-REG-9031', 'ACTIVE')
 ON CONFLICT (email) DO NOTHING;
 
--- Initial Demo Patient Case
-INSERT INTO public.patients (case_id, name, patient_id, age, gender, contact, anatomy, indication, defect_location, notes, status, workflow_progress)
+-- Initial Demo Patients (Strict Doctor-Wise Assignment)
+-- Doctor A (Dr. Eleanor Vance - dr.vance@reconai.com / p-surg-01)
+INSERT INTO public.patients (case_id, name, patient_id, age, gender, contact, anatomy, indication, defect_location, notes, status, workflow_progress, assigned_doctor_id, assigned_doctor_email, created_by)
 VALUES 
-('RECON-10240', 'Eleanor Vance', 'PID-8842', '44', 'Female', '+1 555-0192', 'Mandible Body', 'Osteoradionecrosis post-radiotherapy', 'Left mandibular angle & body', 'Surgical resection planned. Microvascular reconstruction required.', 'Registered', 1)
+('RECON-10240', 'Eleanor Vance', 'PID-8842', '44', 'Female', '+1 555-0192', 'Mandible Body', 'Osteoradionecrosis post-radiotherapy', 'Left mandibular angle & body', 'Surgical resection planned. Microvascular reconstruction required.', 'Registered', 1, 'p-surg-01', 'dr.vance@reconai.com', 'dr.vance@reconai.com'),
+('RECON-10241', 'Marcus Brody', 'PID-9011', '52', 'Male', '+1 555-0195', 'Mandible Angle', 'Ameloblastoma resection defect', 'Right mandibular ramus & angle', 'Fibula free flap scheduled.', 'Registered', 1, 'p-surg-01', 'dr.vance@reconai.com', 'dr.vance@reconai.com')
+ON CONFLICT (case_id) DO NOTHING;
+
+-- Doctor B (Dr. Arthur Smith - dr.smith@reconai.com / p-surg-02)
+INSERT INTO public.patients (case_id, name, patient_id, age, gender, contact, anatomy, indication, defect_location, notes, status, workflow_progress, assigned_doctor_id, assigned_doctor_email, created_by)
+VALUES 
+('RECON-10242', 'Sarah Connor', 'PID-4102', '38', 'Female', '+1 555-0198', 'Maxilla', 'Squamous cell carcinoma post-maxillectomy', 'Left maxilla anterior & floor of orbit', 'Zygomatic implant graft plan required.', 'Registered', 1, 'p-surg-02', 'dr.smith@reconai.com', 'dr.smith@reconai.com'),
+('RECON-10243', 'James Logan', 'PID-4105', '49', 'Male', '+1 555-0199', 'Mandible Symphysis', 'Gunshot trauma defect', 'Anterior mandibular symphysis', 'Custom titanium plate fixation plan.', 'Registered', 1, 'p-surg-02', 'dr.smith@reconai.com', 'dr.smith@reconai.com')
+ON CONFLICT (case_id) DO NOTHING;
+
+-- Unassigned Patient (Only visible to Admin)
+INSERT INTO public.patients (case_id, name, patient_id, age, gender, contact, anatomy, indication, defect_location, notes, status, workflow_progress, assigned_doctor_id, assigned_doctor_email, created_by)
+VALUES 
+('RECON-10244', 'Robert Chen', 'PID-9901', '61', 'Male', '+1 555-0210', 'Mandible Body', 'Trauma injury defect', 'Right mandibular body', 'Pending primary surgeon assignment.', 'Registered', 1, 'UNASSIGNED', 'UNASSIGNED', 'UNASSIGNED')
 ON CONFLICT (case_id) DO NOTHING;
 
 -- Auto-Confirm All Registered Users in Supabase Auth (removes 'Waiting for verification')

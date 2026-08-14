@@ -133,5 +133,8 @@ export interface Patient {
   outcome?: Record<string, unknown> | null;
   workflowProgress: number;
   status: string;
+  assignedDoctorId?: string;
+  assignedDoctorEmail?: string;
+  createdBy?: string;
   createdAt?: string;
 }

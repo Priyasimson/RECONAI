@@ -71,12 +71,6 @@ export function AdminLayout({ currentUser, onLogout }: AdminLayoutProps) {
             <div className="text-indigo-400 font-mono text-[11px] truncate">{currentUser?.email}</div>
           </div>
 
-          {/* Supabase Status Pill */}
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-950/70 border border-emerald-800/80 text-[11px] text-emerald-300 font-semibold mb-5 shadow-xs">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>Supabase Connected</span>
-          </div>
-
           {/* Navigation Links */}
           <nav className="space-y-1 text-xs max-h-[calc(100vh-260px)] overflow-y-auto pr-1">
             {adminNavItems.map((item) => {

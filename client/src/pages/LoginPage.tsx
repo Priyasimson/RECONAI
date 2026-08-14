@@ -4,7 +4,7 @@ import { Workflow, Mail, Lock, ShieldCheck, ArrowRight, Eye, EyeOff, Building2, 
 import { signInUser, signUpUser, getSupabaseConfig, fetchProfilesFromSupabase, logAuditEvent } from '../lib/supabase';
 
 interface LoginPageProps {
-  onLoginSuccess: (user: { email: string; name: string; role: 'ADMIN' | 'SURGEON' | 'CLINICAL_STAFF' }) => void;
+  onLoginSuccess: (user: { id: string; email: string; name: string; role: 'ADMIN' | 'SURGEON' | 'CLINICAL_STAFF' }) => void;
 }
 
 export function LoginPage({ onLoginSuccess }: LoginPageProps) {
@@ -99,6 +99,7 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
       await logAuditEvent(cleanEmail, profile.role, 'USER_LOGIN', `Successful login to ${roleTab === 'admin' ? 'Admin Portal' : 'Clinical Workspace'}`, 'SUCCESS');
 
       onLoginSuccess({
+        id: profile.id,
         email: profile.email,
         name: profile.fullName,
         role: profile.role
